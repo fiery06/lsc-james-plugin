@@ -7,10 +7,13 @@ This a plugin for LSC, using James REST API
 
 ### Goal
 
-The object of this plugin is to synchronize addresses aliases from one referential to a [James server](https://james.apache.org/).
-For example it can be used to synchronize the aliases stored in the LDAP of an OBM instance to the James Server(s) of an OpenPaas deployment.
+The object of this plugin is to synchronize addresses aliases and users from one referential to a [James server](https://james.apache.org/).
 
-### Architecture
+### Address Aliases Synchronization
+
+In the following example, LSC plugin will be used to synchronize the aliases stored in OBM's  LDAP server and James Server(s) of a TMail deployment.
+
+#### Architecture
 
 Given the following LDAP entry:
 ```
@@ -21,8 +24,8 @@ mailAlias: remy.kowalsky@linagora.com
 mailAlias: remy@linagora.com
 ```
 
-This will be represented as the following James address alias:
-```
+The corresponding James address alias is:
+```bash
 $ curl -XGET http://ip:port/address/aliases/rkowalsky@linagora.com
 
 [
@@ -31,43 +34,100 @@ $ curl -XGET http://ip:port/address/aliases/rkowalsky@linagora.com
 ]
 ```
 
-As addresses aliases in James are only created if there are some sources, an LDAP entry without mailAlias attribute won't be synchronized.
+Because the alias for addresses in James are only created if there are some sources, the LDAP entry without mailAlias attribute won't be synchronized.
 
-The pivot used for the synchronization in the LSC connector is the email address, here `rkowalsky@linagora.com` stored in the `email` attribute.
+The pivot used for the synchronization in LSC connector is email address. For this case,  `rkowalsky@linagora.com` is stored in `email` attribute.
 
 The destination attribute for the LSC aliases connector is named `sources`.
 
+### Users Synchronization
+
+In the following example, LSC plugin will be used to synchronize the users stored in OBM's  LDAP server and James Server(s) of a TMail deployment.
+
+#### Architecture
+Given the following LDAP entries:
+
+```
+dn: uid=james-user, ou=people, dc=james,dc=org
+mail: james-user@james.org
+[...]
+
+dn: uid=james-user2, ou=people, dc=james,dc=org
+mail: james-user2@james.org
+[...]
+
+dn: uid=james-user3, ou=people, dc=james,dc=org
+mail: james-user3@james.org
+[...]
+```
+
+This will be represented as the following James users:  
+
+```bash
+$ curl -XGET http://ip:port/users
+
+[
+  {"username":"james-user2@james.org"},
+  {"username":"james-user4@james.org"}
+]
+```
+
+If LDAP entry with the `mail` attribute exists but not synchronized, the user will be `created` with a random generated password (24 characters).
+
+If LDAP entry has no `mail` attribute, the user will be `deleted`.
+
+Expected Result:
+
+    - james-user@james.org -> create
+    - james-user2@james.org -> nothing happens
+    - james-user3@james.org -> create
+    - james-user4@james.org -> delete
+
+```bash 
+$ curl -XGET http://ip:port/users
+
+[
+  {"username":"james-user@james.org"},
+  {"username":"james-user2@james.org"},
+  {"username":"james-user3@james.org"}
+]
+```
+
+The pivot used for the synchronization in LSC connector is email address. For this case,  `james-user@james.org` is stored in `email` attribute.
+
+
 ### Configuration
 
-The plugin connection needs a JWT token to connect to James. To configure this JWT token, set the `password` field of the plugin connection as the JWT token you want to use.
+The plugin connection requires a JWT token to connect to James. Set the `password` field of the plugin connection with the JWT token you want to use.
 
-The `url` field of the plugin connection must be set to the URL of James' webadmin.
+The `url` field of the plugin connection must be set to the URL of James's webadmin.
 
 The `username` field of the plugin is ignored for now.
 
 ### Usage
 
-There is an example of configuration in the `sample` directory. The `lsc.xml` file describe a synchronization from an OBM LDAP to a James server.
-The values to configure are:
-  - `connections.ldapConnection.url`: The URL to the LDAP of OBM
-  - `connections.ldapConnection.username`: An LDAP user which is able to read the OBM aliases
-  - `connections.ldapConnection.password`: The password of this user
-  
-  - `connections.pluginConnection.url`: The URL to the James Webadmin
-  - `connections.pluginConnection.password`: the JWT token used to connect the James Webadmin, it must includes an admin claim.
-  
+Configuration examples can be found in `sample` directory. The `lsc.xml` file describe a synchronization from an OBM LDAP to a James server.
+Available parameters are:
+  - `connections.ldapConnection.url`: URL of OBM's LDAP Server.
+  - `connections.ldapConnection.username`: LDAP Username which able to read the OBM aliases.
+  - `connections.ldapConnection.password`: Password of this user.
+  - `connections.pluginConnection.url`: URL of James's WebAdmin.
+  - `connections.pluginConnection.password`: The JWT token used to connect to James WebAdmin, must included an admin claim.
+
   - `tasks.task.ldapSourceService.baseDn`: The search base of the users to synchronize.
   
   
-The domains used in the aliases must have been previously created in James.
-Otherwise if a user have a single alias pointing to an unknown domain, none of her aliases will be added. 
+The domain used in the aliases must already created in James.
+Otherwise none of the aliases will be added, as user has a single alias pointing to an unknown domain.
 
-The jar of the James LSC plugin must be copied in the `lib` directory of your LSC installation.
-Then you can launch it with the following command line: 
+James LSC plugin `.jar` must be placed in `lib` directory of your LSC installation.
+Launch it with the following command:
 
-`̀``
-JAVA_OPTS="-DLSC.PLUGINS.PACKAGEPATH=org.lsc.plugins.connectors.james.generated" bin/lsc --config /home/rkowalski/Documents/lsc-james-plugin/sample/ldap-to-james/ --synchronize all --clean all --threads 1 
-```  
+```bash
+JAVA_OPTS="-DLSC.PLUGINS.PACKAGEPATH=org.lsc.plugins.connectors.james.generated" bin/lsc --config /home/rkowalski/Documents/lsc-james-plugin/sample/ldap-to-james/ --synchronize all --clean all --threads 1
+```
+
+If don't want to delete dangling data, remove `--clean all` parameter.
 
 ### Packaging
 
